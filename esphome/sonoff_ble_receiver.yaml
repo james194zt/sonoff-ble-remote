@@ -21,6 +21,27 @@ globals:
     type: std::vector<std::string>
     restore_value: no
     initial_value: '{"short", "double", "long"}'
+  - id: sonoff_ble_debounce_ms
+    type: int
+    restore_value: yes
+    initial_value: '400'
+
+number:
+  - platform: template
+    name: "Sonoff BLE Event Dedup"
+    id: sonoff_ble_debounce_number
+    icon: "mdi:timer-outline"
+    entity_category: config
+    optimistic: true
+    min_value: 50
+    max_value: 2000
+    step: 50
+    unit_of_measurement: ms
+    lambda: !lambda 'return id(sonoff_ble_debounce_ms);'
+    set_action:
+      - globals.set:
+          id: sonoff_ble_debounce_ms
+          value: !lambda 'return (int)x;'
 
 binary_sensor:
   - platform: template
@@ -55,7 +76,8 @@ esp32_ble_tracker:
                   int button_action = i % 3;
                   size_t slot = (size_t) (button_number - 1) * 3 + button_action;
                   uint32_t now = millis();
-                  if ((now - last_fire_ms[slot]) < 400) {
+                  uint32_t debounce_ms = id(sonoff_ble_debounce_ms);
+                  if ((now - last_fire_ms[slot]) < debounce_ms) {
                     return;
                   }
                   last_fire_ms[slot] = now;

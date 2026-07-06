@@ -65,7 +65,11 @@ Or use **Device triggers** in the UI.
 |--------|---------|---------|
 | **Event deduplication (ms)** | 400 | Ignore duplicate events for the same button within this window |
 
-Increase if one physical press still triggers twice in HA/Node-RED. Decrease if repeat presses on the same button feel sluggish. This only affects the Home Assistant integration — ESPHome firmware has a separate 400 ms filter in `sonoff_ble_receiver.yaml`.
+Increase if one physical press still triggers twice in HA/Node-RED. Decrease if repeat presses on the same button feel sluggish.
+
+**ESPHome (ble-relay device):** after flashing firmware with the latest YAML, adjust **Sonoff BLE Event Dedup** (`number.*`) on the ESPHome device in Home Assistant or the ESPHome dashboard — default 400 ms, range 50–2000 ms. Persists across reboots; no reflash needed.
+
+**Home Assistant integration:** per-remote option below (both layers are independent).
 
 ## Event payload (from ESPHome)
 
@@ -109,7 +113,7 @@ Latest `sonoff_ble_receiver.yaml` uses:
 
 - **80 ms** scan interval/window (near-continuous active scan)
 - **Always-on** scanning from boot (no stop when API drops)
-- **400 ms** per-button dedup (R5 rebroadcasts 2–3 BLE adverts per physical press)
+- **400 ms** per-button dedup (configurable via **Sonoff BLE Event Dedup** number entity)
 
 ### Automation tips for lights
 
