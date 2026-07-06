@@ -284,14 +284,11 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
-        return SonoffBleRemoteOptionsFlowHandler(config_entry)
+        return SonoffBleRemoteOptionsFlowHandler()
 
 
 class SonoffBleRemoteOptionsFlowHandler(config_entries.OptionsFlow):
     """Options for a Sonoff BLE Remote config entry."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -299,8 +296,8 @@ class SonoffBleRemoteOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        debounce_ms = self.config_entry.options.get(
-            CONF_DEBOUNCE_MS, DEFAULT_DEBOUNCE_MS
+        debounce_ms = float(
+            self.config_entry.options.get(CONF_DEBOUNCE_MS, DEFAULT_DEBOUNCE_MS)
         )
 
         return self.async_show_form(
