@@ -32,7 +32,6 @@ number:
     id: sonoff_ble_debounce_number
     icon: "mdi:timer-outline"
     entity_category: config
-    optimistic: true
     min_value: 50
     max_value: 2000
     step: 50
