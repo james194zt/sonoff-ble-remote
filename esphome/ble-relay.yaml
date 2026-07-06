@@ -1,11 +1,9 @@
-# Minimal ESPHome BLE relay for Sonoff R5 / S-Mate remotes.
-# Pair remotes in Home Assistant via the Sonoff BLE Remote integration.
-# Docs: https://github.com/james194zt/sonoff-ble-remote
+# Standalone ESPHome BLE relay (GitHub repo copy).
+# HADashboard users: flash from HADashboard/esphome/ble-relay.yaml instead.
 
 substitutions:
   devicename: ble-relay
   devicefriendlyname: BLE Relay
-  frameworktype: esp-idf
 
 esphome:
   name: ${devicename}
@@ -19,76 +17,12 @@ esp32:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  power_save_mode: LIGHT
+
+packages:
+  sonoff_ble: !include sonoff_ble_receiver.yaml
 
 api:
   homeassistant_services: true
 
 ota:
   - platform: esphome
-
-# Sonoff BLE decoder - fires esphome.sonoff_ble on the HA event bus.
-# See custom_components/sonoff_ble_receiver.yaml in this repo for the full package,
-# or https://devices.esphome.io/devices/sonoff-ble/
-
-globals:
-  - id: btdata_uuid4
-    type: std::vector<uint32_t>
-    restore_value: no
-    initial_value: '{0x8A6BECDA, 0xD535B385, 0x1FFC794F, 0xE60781B6, 0x2FCF487F, 0xD734B087, 0x02E36652, 0xEB0B8FBB, 0x32D15662,
-                      0xFA1B99AA, 0x9575F6C5, 0x9F7CFCCF, 0x29C84B79, 0xBF5FDDEF, 0xA043C2F0, 0xBF5EDAEF, 0xA141C4F1, 0x9D7EF8CD}'
-  - id: button_actions
-    type: std::vector<std::string>
-    restore_value: no
-    initial_value: '{"short", "double", "long"}'
-
-binary_sensor:
-  - platform: template
-    id: ble_scan_torun
-    internal: true
-    lambda: !lambda return global_api_server->is_connected();
-    on_press:
-      - esp32_ble_tracker.start_scan:
-          continuous: true
-    on_release:
-      - esp32_ble_tracker.stop_scan:
-
-esp32_ble_tracker:
-  scan_parameters:
-    interval: 150ms
-    window: 150ms
-    active: true
-    continuous: true
-  on_ble_advertise:
-    - mac_address: "66:55:44:33:22:11"
-      then:
-        - lambda: |-
-            static std::vector< esphome::esp32_ble::ESPBTUUID > btdata_store;
-            auto btdata = x.get_service_uuids();
-            if (btdata.size() >= 6 && btdata[1].contains(0x78, 0xF6)) {
-              if (btdata_store == btdata) {
-                return;
-              }
-              btdata_store = btdata;
-              uint32_t btdevice = (btdata[2].get_uuid().uuid.uuid32 & 0xff000000) |
-                                  (btdata[3].get_uuid().uuid.uuid32 & 0x00ffffff);
-              uint32_t uuid4u32 = (btdata[4].get_uuid().uuid.uuid32);
-              for (size_t i = 0; i < id(btdata_uuid4).size(); i++) {
-                uint32_t stored_value = id(btdata_uuid4)[i];
-                if ((((uuid4u32 >> 24) ^ (stored_value >> 24)) == ((uuid4u32 >> 16 & 0xff) ^ (stored_value >> 16 & 0xff))) &&
-                    (((uuid4u32 >> 8 & 0xff) ^ (stored_value >> 8 & 0xff)) == ((uuid4u32 & 0xff) ^ (stored_value & 0xff)))) {
-                  int button_number = i / 3 + 1;
-                  int button_action = i % 3;
-                  esphome::api::CustomAPIDevice capi;
-                  capi.fire_homeassistant_event("esphome.sonoff_ble",
-                    {{"node", App.get_name().c_str()},
-                     {"device", format_hex(btdevice)},
-                     {"button", to_string(button_number)},
-                     {"action", id(button_actions)[button_action].c_str()},
-                     {"service", format_hex(uuid4u32)}});
-                  ESP_LOGI("sonoff_ble", "node=%s device=0x%x button=%d action=%s",
-                           App.get_name().c_str(), btdevice, button_number, id(button_actions)[button_action].c_str());
-                  return;
-                }
-              }
-            }

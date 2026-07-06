@@ -72,6 +72,88 @@ Or use **Device triggers** in the UI.
 - Select the correct ESPHome relay if you have more than one
 - The same Sonoff remote ID can exist on different relays independently
 
+## Event latency
+
+Nothing is **polled** in Home Assistant — the chain is:
+
+```
+R5 press → BLE advert → ESP32 scan → esphome.sonoff_ble → HA entity (instant)
+```
+
+### Where the delay comes from
+
+| Source | Typical delay | Can we fix it? |
+|--------|---------------|----------------|
+| **R5 “short” detection** | ~300–500 ms | **No** — remote waits to see if you double/long press |
+| ESP32 BLE scan | ~50–150 ms | Reflash with 80 ms scan window (see below) |
+| Duplicate-advert filter | 150 ms | Only blocks the same button+action burst |
+| Home Assistant | ~instant | Already event-driven |
+
+The **R5 does not send a “button down” event**. It only BLE-adverts after it has decided the press type (`short`, `double`, or `long`). That is why a light switch feels slightly sluggish compared to a wired switch — it is the remote, not HA polling.
+
+The official eWeLink gateway uses a ~**400 ms** decision window for the same reason.
+
+### ESPHome tuning (reflash ble-relay)
+
+Latest `sonoff_ble_receiver.yaml` uses:
+
+- **80 ms** scan interval/window (near-continuous active scan)
+- **Always-on** scanning from boot (no stop when API drops)
+- **150 ms** per-button debounce (not a global block on repeat presses)
+
+### Automation tips for lights
+
+Use **Single Click** and keep the automation fast:
+
+```yaml
+trigger:
+  - platform: state
+    entity_id: event.kitchen_r5_bottom_centre
+    attribute: event_type
+    to: Single Click
+mode: restart
+action:
+  - service: light.toggle
+    target:
+      entity_id: light.kitchen
+```
+
+- Use `mode: restart` (not `queued`) so rapid presses are not stacked
+- Do **not** add an extra `delay` in the automation
+- Map only the buttons you need to **Single Click** for lights
+
+### Measuring latency
+
+Compare timestamps in **ESPHome log** vs **Developer tools → Events** for `esphome.sonoff_ble`. If ESPHome logs the press quickly but HA is slow, the issue is HA-side. If ESPHome log itself is delayed after your physical press, the R5 + BLE scan path is the bottleneck.
+
+### Node-RED
+
+**Do not** use the `event.*` entities in Node-RED state nodes — their state is a
+**timestamp** (when the button was last pressed), which shows as useless garbage
+like `37.49.064+00.00`.
+
+#### Toggle lights (on / off / on / off)
+
+Use the **`binary_sensor.*_toggle`** entities. Each **single** click flips
+`on` ↔ `off`, so Node-RED always gets a state change:
+
+```
+binary_sensor.kitchen_r5_top_left_toggle  →  on   (1st click)
+binary_sensor.kitchen_r5_top_left_toggle  →  off  (2nd click)
+```
+
+Wire your flow to `state_changed` on that entity, or drive a light from its
+state directly. Double/long clicks do **not** flip the toggle.
+
+#### Click type only
+
+The **`sensor.*_click`** entities report the last press type (`single`,
+`double`, `long`). Repeated singles keep the same state, so Node-RED will **not**
+re-fire on the second click — use `_toggle` for switches instead.
+
+Each press also bumps a **`press_count`** attribute on the click sensor if you
+need a monotonic counter for custom logic.
+
 ## License
 
 MIT
