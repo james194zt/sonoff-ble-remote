@@ -113,10 +113,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=self._relay_schema(),
                 )
             self._relay_node = relay_node
-            return self.async_show_form(
-                step_id="setup",
-                data_schema=self._setup_schema(),
-            )
+            return await self.async_step_setup()
 
         return self.async_show_form(
             step_id="relay",
@@ -141,6 +138,9 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
+    def _pair_schema(self) -> vol.Schema:
+        return vol.Schema({vol.Required("start", default=True): bool})
+
     async def async_step_setup(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -155,15 +155,8 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=self._setup_schema(),
                 )
             if self._via_manual:
-                return self.async_show_form(
-                    step_id="manual",
-                    data_schema=self._manual_schema(),
-                )
-            return self.async_show_form(
-                step_id="pair",
-                description_placeholders=self._pair_placeholders(),
-                data_schema=vol.Schema({}),
-            )
+                return await self.async_step_manual()
+            return await self.async_step_pair()
 
         return self.async_show_form(
             step_id="setup",
@@ -217,20 +210,50 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="pair",
                 description_placeholders=placeholders,
-                data_schema=vol.Schema({}),
+                data_schema=self._pair_schema(),
             )
 
         known = _known_device_ids(self.hass, self._relay_node)
-        try:
-            device_id = await _wait_for_sonoff_ble(
-                self.hass, self._relay_node, known, PAIR_TIMEOUT_SECONDS
+        return self.async_show_progress(
+            step_id="pairing",
+            progress_action="pairing",
+            progress_task=self.hass.async_create_task(
+                _wait_for_sonoff_ble(
+                    self.hass, self._relay_node, known, PAIR_TIMEOUT_SECONDS
+                )
+            ),
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_pairing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        placeholders = self._pair_placeholders()
+
+        if not self.progress_task.done():
+            return self.async_show_progress(
+                step_id="pairing",
+                progress_action="pairing",
+                progress_task=self.progress_task,
+                description_placeholders=placeholders,
             )
+
+        try:
+            device_id = self.progress_task.result()
         except TimeoutError:
             return self.async_show_form(
                 step_id="pair",
                 errors={"base": "pair_timeout"},
                 description_placeholders=placeholders,
-                data_schema=vol.Schema({}),
+                data_schema=self._pair_schema(),
+            )
+        except Exception:
+            _LOGGER.exception("Unexpected error while pairing Sonoff BLE remote")
+            return self.async_show_form(
+                step_id="pair",
+                errors={"base": "pair_failed"},
+                description_placeholders=placeholders,
+                data_schema=self._pair_schema(),
             )
 
         return await self._create_entry(device_id)

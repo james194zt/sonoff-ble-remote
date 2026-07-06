@@ -20,7 +20,10 @@
       },
       "pair": {
         "title": "Pairing",
-        "description": "Click Submit, then press any button on the {model} within {timeout} seconds.\n\nListening on ESPHome relay: {relay}"
+        "description": "Relay: {relay}. Listening time: {timeout} seconds.",
+        "data": {
+          "start": "Click Submit to start listening, then press any button on the {model} remote."
+        }
       },
       "manual": {
         "title": "Manual device ID",
@@ -30,10 +33,17 @@
         }
       }
     },
+    "progress": {
+      "pairing": {
+        "title": "Listening for button press",
+        "description": "Press any button on the {model} now. Relay: {relay}."
+      }
+    },
     "error": {
       "invalid_device_id": "Device ID must be 6-8 hex characters.",
       "already_configured": "This remote is already added on this BLE relay.",
-      "pair_timeout": "No button press detected. Check the ESPHome relay is online and in range.",
+      "pair_timeout": "No button press detected. Check the ESPHome relay is online, flashed with the node field, and in range.",
+      "pair_failed": "Pairing failed unexpectedly. Check Home Assistant logs.",
       "invalid_name": "Please enter a name for this remote.",
       "invalid_relay": "Selected device is not a valid ESPHome node."
     }
