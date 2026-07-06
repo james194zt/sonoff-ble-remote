@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sonoff BLE Remote",
+        "description": "Add an R5 or S-Mate remote decoded by your ESPHome ble-relay node.",
+        "menu_options": {
+          "pair": "Pair — press a button on the remote",
+          "manual": "Enter device ID manually"
+        }
+      },
+      "model": {
+        "title": "Remote type",
+        "description": "Choose the Sonoff remote model.",
+        "data": {
+          "model": "Model"
+        }
+      },
+      "name": {
+        "title": "Name this remote",
+        "data": {
+          "name": "Name"
+        }
+      },
+      "pair": {
+        "title": "Pairing",
+        "description": "Click **Submit** to start listening, then press any button on the {model} within {timeout} seconds."
+      },
+      "manual": {
+        "title": "Manual device ID",
+        "description": "Enter the hex device ID from ESPHome logs (e.g. 5acc35c8, no 0x prefix).",
+        "data": {
+          "device_id": "Device ID"
+        }
+      }
+    },
+    "error": {
+      "invalid_device_id": "Device ID must be 6–8 hex characters.",
+      "already_configured": "This remote is already added.",
+      "pair_timeout": "No button press detected. Check ble-relay is online and in range."
+    }
+  }
+}
