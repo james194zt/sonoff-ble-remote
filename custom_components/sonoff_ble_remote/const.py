@@ -4,6 +4,7 @@ CONF_DEVICE_ID = "device_id"
 CONF_MODEL = "model"
 CONF_RELAY_NODE = "relay_node"
 CONF_RELAY_DEVICE_ID = "relay_device_id"
+CONF_DEBOUNCE_MS = "debounce_ms"
 
 ESPHOME_DOMAIN = "esphome"
 ESPHOME_DEVICE_NAME = "device_name"
@@ -15,8 +16,8 @@ EVENT_ESPHOME_SONOFF_BLE = "esphome.sonoff_ble"
 
 PAIR_TIMEOUT_SECONDS = 120
 
-# Collapse R5 BLE rebroadcast bursts (same button fires 2-3 times per press).
-DEBOUNCE_SECONDS = 0.4
+# Default HA-side dedup for R5 BLE rebroadcast bursts (configurable per remote).
+DEFAULT_DEBOUNCE_MS = 400
 
 ACTION_TO_EVENT = {
     "short": "Single Click",
@@ -72,3 +73,13 @@ def event_matches_relay(
     if event_node and event_node == expected:
         return True
     return allow_missing_node and not event_node
+
+
+def get_debounce_seconds(config_entry) -> float:
+    """Return debounce window in seconds from config entry options."""
+    ms = config_entry.options.get(CONF_DEBOUNCE_MS, DEFAULT_DEBOUNCE_MS)
+    try:
+        ms = int(ms)
+    except (TypeError, ValueError):
+        ms = DEFAULT_DEBOUNCE_MS
+    return max(0, ms) / 1000.0

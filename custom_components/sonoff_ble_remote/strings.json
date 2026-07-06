@@ -39,5 +39,16 @@
       "pair_timeout": "No button press reached Home Assistant. Press a button on the R5, wait a second, then click Submit. Check Developer Tools > Events for esphome.sonoff_ble.",
       "ha_actions_disabled": "Enable 'Allow the device to perform Home Assistant actions' on your ESPHome BLE relay device, then try again."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sonoff BLE Remote options",
+        "description": "Ignore duplicate BLE events for the same button within this window. Increase if one press triggers twice; decrease for faster repeat presses on the same button.",
+        "data": {
+          "debounce_ms": "Event deduplication (ms)"
+        }
+      }
+    }
   }
 }

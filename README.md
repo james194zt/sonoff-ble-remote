@@ -57,6 +57,16 @@ action:
 
 Or use **Device triggers** in the UI.
 
+### Options
+
+**Settings → Devices & services → Sonoff BLE Remote → your remote → Configure**
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| **Event deduplication (ms)** | 400 | Ignore duplicate events for the same button within this window |
+
+Increase if one physical press still triggers twice in HA/Node-RED. Decrease if repeat presses on the same button feel sluggish. This only affects the Home Assistant integration — ESPHome firmware has a separate 400 ms filter in `sonoff_ble_receiver.yaml`.
+
 ## Event payload (from ESPHome)
 
 | Field    | Example      | Description                          |

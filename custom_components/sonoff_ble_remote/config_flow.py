@@ -16,9 +16,11 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_DEVICE_ID,
+    CONF_DEBOUNCE_MS,
     CONF_MODEL,
     CONF_RELAY_DEVICE_ID,
     CONF_RELAY_NODE,
+    DEFAULT_DEBOUNCE_MS,
     DOMAIN,
     ESPHOME_DOMAIN,
     EVENT_ESPHOME_SONOFF_BLE,
@@ -274,6 +276,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_RELAY_NODE: self._relay_node,
                 CONF_RELAY_DEVICE_ID: self._relay_device_id,
             },
+            options={CONF_DEBOUNCE_MS: DEFAULT_DEBOUNCE_MS},
         )
 
     @staticmethod
@@ -285,7 +288,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class SonoffBleRemoteOptionsFlowHandler(config_entries.OptionsFlow):
-    """Options flow placeholder — add more remotes via Add Integration."""
+    """Options for a Sonoff BLE Remote config entry."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self.config_entry = config_entry
@@ -293,4 +296,26 @@ class SonoffBleRemoteOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        return self.async_show_form(step_id="init")
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        debounce_ms = self.config_entry.options.get(
+            CONF_DEBOUNCE_MS, DEFAULT_DEBOUNCE_MS
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DEBOUNCE_MS, default=debounce_ms): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=50,
+                            max=2000,
+                            step=50,
+                            unit_of_measurement="ms",
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                }
+            ),
+        )

@@ -13,10 +13,12 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     CONF_DEVICE_ID,
     CONF_RELAY_NODE,
-    DEBOUNCE_SECONDS,
+    CONF_DEBOUNCE_MS,
+    DEFAULT_DEBOUNCE_MS,
     DOMAIN,
     EVENT_ESPHOME_SONOFF_BLE,
     event_matches_relay,
+    get_debounce_seconds,
     normalize_device_id,
     normalize_relay_node,
 )
@@ -135,8 +137,9 @@ def _dispatch_sonoff_ble_event(hass: HomeAssistant, event) -> None:
             continue
 
         debounce_key = (entry.entry_id, button, action)
+        debounce_seconds = get_debounce_seconds(entry)
         if (prev := debounce_store.get(debounce_key)) is not None:
-            if (now - prev) < DEBOUNCE_SECONDS:
+            if (now - prev) < debounce_seconds:
                 _LOGGER.debug(
                     "Debounced rebroadcast: device=%s button=%s action=%s",
                     device_id,
