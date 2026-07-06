@@ -6,6 +6,7 @@ CONF_RELAY_NODE = "relay_node"
 CONF_RELAY_DEVICE_ID = "relay_device_id"
 
 ESPHOME_DOMAIN = "esphome"
+ESPHOME_DEVICE_NAME = "device_name"
 
 MODEL_R5 = "r5"
 MODEL_S_MATE = "s_mate"

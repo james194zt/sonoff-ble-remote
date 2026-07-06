@@ -14,7 +14,6 @@ from .const import (
     CONF_MODEL,
     CONF_RELAY_NODE,
     DOMAIN,
-    ESPHOME_DOMAIN,
     MODEL_BUTTONS,
     MODEL_LABELS,
     normalize_device_id,
@@ -85,7 +84,6 @@ class SonoffBleRemoteButton(EventEntity):
             name=device_name,
             manufacturer="SONOFF",
             model=MODEL_LABELS.get(model, model.upper()),
-            via_device=(ESPHOME_DOMAIN, relay_node),
         )
 
     @callback
