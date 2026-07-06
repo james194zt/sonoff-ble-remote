@@ -1,1 +1,0 @@
-Fix config flow labels by adding translations/en.json
