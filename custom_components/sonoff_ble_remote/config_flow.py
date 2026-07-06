@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import Any
 
@@ -30,10 +31,17 @@ from .const import (
 )
 from .util import get_esphome_device_name, get_esphome_node_from_device_id
 
+_LOGGER = logging.getLogger(__name__)
+
 DEVICE_ID_RE = re.compile(r"^[0-9a-fA-F]{6,8}$")
 
 METHOD_PAIR = "pair"
 METHOD_MANUAL = "manual"
+
+METHOD_OPTIONS = {
+    METHOD_PAIR: "Pair - press a button on the remote",
+    METHOD_MANUAL: "Enter device ID manually",
+}
 
 
 def _known_device_ids(hass: HomeAssistant, relay_node: str) -> set[str]:
@@ -70,8 +78,6 @@ async def _wait_for_sonoff_ble(
     unsub = hass.bus.async_listen(EVENT_ESPHOME_SONOFF_BLE, _handler)
     try:
         return await asyncio.wait_for(future, timeout=timeout)
-    except TimeoutError:
-        raise
     finally:
         unsub()
 
@@ -129,29 +135,14 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         if user_input is not None:
-            method = user_input["method"]
-            self._via_manual = method == METHOD_MANUAL
+            self._via_manual = user_input["method"] == METHOD_MANUAL
             return await self.async_step_model()
 
         return self.async_show_form(
             step_id="method",
             data_schema=vol.Schema(
                 {
-                    vol.Required("method", default=METHOD_PAIR): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(
-                                    value=METHOD_PAIR,
-                                    label="Pair - press a button on the remote",
-                                ),
-                                selector.SelectOptionDict(
-                                    value=METHOD_MANUAL,
-                                    label="Enter device ID manually",
-                                ),
-                            ],
-                            mode=selector.SelectSelectorMode.LIST,
-                        )
-                    ),
+                    vol.Required("method", default=METHOD_PAIR): vol.In(METHOD_OPTIONS),
                 }
             ),
         )
@@ -167,21 +158,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="model",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_MODEL, default=MODEL_R5): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(
-                                    value=MODEL_R5,
-                                    label=MODEL_LABELS[MODEL_R5],
-                                ),
-                                selector.SelectOptionDict(
-                                    value=MODEL_S_MATE,
-                                    label=MODEL_LABELS[MODEL_S_MATE],
-                                ),
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
+                    vol.Required(CONF_MODEL, default=MODEL_R5): vol.In(MODEL_LABELS),
                 }
             ),
         )
@@ -195,6 +172,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_show_form(
                     step_id="name",
                     errors={"base": "invalid_name"},
+                    data_schema=self._name_schema(),
                 )
             if self._via_manual:
                 return await self.async_step_manual()
@@ -202,17 +180,11 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="name",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("name"): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                            placeholder="Kitchen R5",
-                        )
-                    ),
-                }
-            ),
+            data_schema=self._name_schema(),
         )
+
+    def _name_schema(self) -> vol.Schema:
+        return vol.Schema({vol.Required("name"): str})
 
     async def async_step_manual(
         self, user_input: dict[str, Any] | None = None
@@ -223,27 +195,23 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_show_form(
                     step_id="manual",
                     errors={"base": "invalid_device_id"},
+                    data_schema=self._manual_schema(),
                 )
             if device_id in _known_device_ids(self.hass, self._relay_node):
                 return self.async_show_form(
                     step_id="manual",
                     errors={"base": "already_configured"},
+                    data_schema=self._manual_schema(),
                 )
             return await self._create_entry(device_id)
 
         return self.async_show_form(
             step_id="manual",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_DEVICE_ID): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                            placeholder="5acc35c8",
-                        )
-                    ),
-                }
-            ),
+            data_schema=self._manual_schema(),
         )
+
+    def _manual_schema(self) -> vol.Schema:
+        return vol.Schema({vol.Required(CONF_DEVICE_ID): str})
 
     async def async_step_pair_wait(
         self, user_input: dict[str, Any] | None = None
@@ -252,26 +220,18 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             get_esphome_device_name(self.hass, self._relay_device_id)
             or self._relay_node
         )
-        instructions = (
-            f"Click Submit, then press any button on the "
-            f"{MODEL_LABELS[self._model]} within {PAIR_TIMEOUT_SECONDS} seconds.\n\n"
-            f"Listening on ESPHome relay: {relay_name}"
-        )
-
-        pair_schema = vol.Schema(
-            {
-                vol.Required("instructions", default=instructions): selector.TextSelector(
-                    selector.TextSelectorConfig(
-                        type=selector.TextSelectorType.TEXT,
-                        multiline=True,
-                        read_only=True,
-                    )
-                ),
-            }
-        )
+        placeholders = {
+            "model": MODEL_LABELS[self._model],
+            "timeout": str(PAIR_TIMEOUT_SECONDS),
+            "relay": relay_name,
+        }
 
         if user_input is None:
-            return self.async_show_form(step_id="pair", data_schema=pair_schema)
+            return self.async_show_form(
+                step_id="pair",
+                description_placeholders=placeholders,
+                data_schema=vol.Schema({}),
+            )
 
         known = _known_device_ids(self.hass, self._relay_node)
         try:
@@ -282,7 +242,8 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="pair",
                 errors={"base": "pair_timeout"},
-                data_schema=pair_schema,
+                description_placeholders=placeholders,
+                data_schema=vol.Schema({}),
             )
 
         return await self._create_entry(device_id)

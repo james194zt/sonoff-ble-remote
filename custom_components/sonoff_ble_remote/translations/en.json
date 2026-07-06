@@ -32,10 +32,7 @@
       },
       "pair": {
         "title": "Pairing",
-        "description": "Press a button on the remote after clicking Submit.",
-        "data": {
-          "instructions": "Instructions"
-        }
+        "description": "Click Submit, then press any button on the {model} within {timeout} seconds.\n\nListening on ESPHome relay: {relay}"
       },
       "manual": {
         "title": "Manual device ID",
