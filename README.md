@@ -2,9 +2,9 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 
-Home Assistant custom integration for **Sonoff R5** and **S-Mate** BLE remotes, using an [ESPHome ble-relay](https://devices.esphome.io/devices/sonoff-ble/) node to decode eWeLink-Remote adverts.
+Home Assistant custom integration for **Sonoff R5** and **S-Mate** BLE remotes.
 
-Each button becomes an **event** entity with **Single Click**, **Double Click**, and **Long Click** — matching the official eWeLink add-on UX.
+Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote adverts and forward them to Home Assistant. Each remote button becomes an **event** entity with **Single Click**, **Double Click**, and **Long Click**.
 
 ## Install (HACS)
 
@@ -15,21 +15,26 @@ Each button becomes an **event** entity with **Single Click**, **Double Click**,
 
 ## Prerequisites
 
-An ESPHome node that fires `esphome.sonoff_ble` on the HA event bus. See [ESPHome Sonoff BLE docs](https://devices.esphome.io/devices/sonoff-ble/) or the [HADashboard ble-relay example](https://github.com/james194zt/HADashboard/tree/main/esphome).
+1. **ESPHome** integration installed in Home Assistant
+2. An ESP32 node flashed with the BLE relay firmware (see below)
+3. The ESPHome node must include `api: homeassistant_services: true`
 
-## Pair a remote
+### ESPHome BLE relay
+
+Flash an ESP32 using the example in [`esphome/ble-relay.yaml`](esphome/ble-relay.yaml), or add the Sonoff BLE decoder from the [ESPHome docs](https://devices.esphome.io/devices/sonoff-ble/).
+
+**Important:** Events must include a `node` field (the ESPHome device name). The example firmware in this repo does this automatically via `App.get_name()`. Reflash if you use an older YAML without the `node` field.
+
+## Add a remote
 
 1. **Settings → Devices & services → Add integration → Sonoff BLE Remote**
-2. **Pair — press a button on the remote**
-3. Model: **Sonoff R5** (6 buttons) or **S-Mate** (3 buttons)
-4. Name it (e.g. `Kitchen R5`)
-5. **Submit**, then press any button within 120 seconds
+2. **Select your ESPHome BLE relay** from the device list
+3. Choose **Pair** or **Enter device ID manually**
+4. Select model (**R5** = 6 buttons, **S-Mate** = 3 buttons)
+5. Name the remote (e.g. `Kitchen R5`)
+6. If pairing: **Submit**, then press any button within 120 seconds
 
-The device ID is captured from ESPHome logs (e.g. `device=0x5acc35c8` → `5acc35c8`).
-
-## Manual device ID
-
-Choose **Enter device ID manually** if you already know the hex ID from ESPHome logs.
+The Sonoff remote links to the selected ESPHome relay. Multiple relays and multiple remotes are supported.
 
 ## Automations
 
@@ -47,17 +52,20 @@ action:
 
 Or use **Device triggers** in the UI.
 
-## Multiple remotes
-
-Add the integration again for each remote (one config entry per device ID).
-
 ## Event payload (from ESPHome)
 
-| Field    | Example      |
-|----------|--------------|
-| `device` | `5acc35c8`   |
-| `button` | `1`–`6` (R5) |
-| `action` | `short`, `double`, `long` |
+| Field    | Example      | Description                          |
+|----------|--------------|--------------------------------------|
+| `node`   | `ble-relay`  | ESPHome device name (BLE relay)      |
+| `device` | `5acc35c8`   | Sonoff remote ID                     |
+| `button` | `1`–`6` (R5) | Button number                        |
+| `action` | `short`      | `short`, `double`, or `long`         |
+
+## Multiple remotes / relays
+
+- Add the integration again for each Sonoff remote
+- Select the correct ESPHome relay if you have more than one
+- The same Sonoff remote ID can exist on different relays independently
 
 ## License
 

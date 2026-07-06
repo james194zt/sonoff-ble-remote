@@ -12,10 +12,13 @@ from .const import (
     ACTION_TO_EVENT,
     CONF_DEVICE_ID,
     CONF_MODEL,
+    CONF_RELAY_NODE,
     DOMAIN,
+    ESPHOME_DOMAIN,
     MODEL_BUTTONS,
     MODEL_LABELS,
     normalize_device_id,
+    normalize_relay_node,
 )
 
 
@@ -25,6 +28,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     device_id = normalize_device_id(entry.data[CONF_DEVICE_ID])
+    relay_node = normalize_relay_node(entry.data[CONF_RELAY_NODE])
     model = entry.data[CONF_MODEL]
     name = entry.title
     buttons = MODEL_BUTTONS[model]
@@ -33,6 +37,7 @@ async def async_setup_entry(
         SonoffBleRemoteButton(
             entry,
             device_id,
+            relay_node,
             model,
             name,
             button_num,
@@ -46,7 +51,7 @@ async def async_setup_entry(
         "entities"
     ]
     for entity in entities:
-        registry[(device_id, entity.button_num)] = entity
+        registry[(entry.entry_id, entity.button_num)] = entity
 
 
 class SonoffBleRemoteButton(EventEntity):
@@ -60,23 +65,27 @@ class SonoffBleRemoteButton(EventEntity):
         self,
         entry: ConfigEntry,
         device_id: str,
+        relay_node: str,
         model: str,
         device_name: str,
         button_num: int,
         button_label: str,
     ) -> None:
         self._entry = entry
-        self._device_id = device_id.lower()
+        self._device_id = device_id
+        self._relay_node = relay_node
         self._model = model
         self.button_num = button_num
 
-        self._attr_unique_id = f"{device_id}_{button_num}"
+        remote_key = f"{relay_node}_{device_id}"
+        self._attr_unique_id = f"{remote_key}_{button_num}"
         self._attr_name = button_label
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
+            identifiers={(DOMAIN, remote_key)},
             name=device_name,
             manufacturer="SONOFF",
             model=MODEL_LABELS.get(model, model.upper()),
+            via_device=(ESPHOME_DOMAIN, relay_node),
         )
 
     @callback

@@ -2,6 +2,10 @@ DOMAIN = "sonoff_ble_remote"
 
 CONF_DEVICE_ID = "device_id"
 CONF_MODEL = "model"
+CONF_RELAY_NODE = "relay_node"
+CONF_RELAY_DEVICE_ID = "relay_device_id"
+
+ESPHOME_DOMAIN = "esphome"
 
 MODEL_R5 = "r5"
 MODEL_S_MATE = "s_mate"
@@ -45,3 +49,8 @@ MODEL_LABELS = {
 def normalize_device_id(device_id: str) -> str:
     """Normalize hex device id from ESPHome logs or manual entry."""
     return device_id.lower().replace("0x", "").strip()
+
+
+def normalize_relay_node(relay_node: str) -> str:
+    """Normalize ESPHome node slug used in esphome.sonoff_ble events."""
+    return relay_node.strip().lower()
