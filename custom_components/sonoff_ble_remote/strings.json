@@ -9,25 +9,13 @@
           "relay_device_id": "ESPHome BLE relay"
         }
       },
-      "method": {
+      "setup": {
         "title": "Add remote",
-        "description": "Pair a new Sonoff remote or enter its device ID manually.",
+        "description": "Configure the Sonoff remote you want to add.",
         "data": {
-          "method": "Setup method"
-        }
-      },
-      "model": {
-        "title": "Remote type",
-        "description": "Choose the Sonoff remote model.",
-        "data": {
-          "model": "Model"
-        }
-      },
-      "name": {
-        "title": "Name this remote",
-        "description": "Give this remote a friendly name.",
-        "data": {
-          "name": "Name"
+          "method": "Setup method",
+          "model": "Remote type",
+          "remote_name": "Name"
         }
       },
       "pair": {

@@ -24,7 +24,6 @@ from .const import (
     EVENT_ESPHOME_SONOFF_BLE,
     MODEL_LABELS,
     MODEL_R5,
-    MODEL_S_MATE,
     PAIR_TIMEOUT_SECONDS,
     normalize_device_id,
     normalize_relay_node,
@@ -89,7 +88,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._model: str = MODEL_R5
-        self._name: str = ""
+        self._remote_name: str = ""
         self._via_manual = False
         self._relay_device_id: str = ""
         self._relay_node: str = ""
@@ -97,7 +96,6 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """First step: select the ESPHome BLE relay device."""
         return await self.async_step_relay(user_input)
 
     async def async_step_relay(
@@ -115,7 +113,10 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=self._relay_schema(),
                 )
             self._relay_node = relay_node
-            return await self.async_step_method()
+            return self.async_show_form(
+                step_id="setup",
+                data_schema=self._setup_schema(),
+            )
 
         return self.async_show_form(
             step_id="relay",
@@ -131,60 +132,57 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-    async def async_step_method(
+    def _setup_schema(self) -> vol.Schema:
+        return vol.Schema(
+            {
+                vol.Required("method", default=METHOD_PAIR): vol.In(METHOD_OPTIONS),
+                vol.Required(CONF_MODEL, default=MODEL_R5): vol.In(MODEL_LABELS),
+                vol.Required("remote_name"): str,
+            }
+        )
+
+    async def async_step_setup(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         if user_input is not None:
             self._via_manual = user_input["method"] == METHOD_MANUAL
-            return await self.async_step_model()
-
-        return self.async_show_form(
-            step_id="method",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("method", default=METHOD_PAIR): vol.In(METHOD_OPTIONS),
-                }
-            ),
-        )
-
-    async def async_step_model(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        if user_input is not None:
             self._model = user_input[CONF_MODEL]
-            return await self.async_step_name()
-
-        return self.async_show_form(
-            step_id="model",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_MODEL, default=MODEL_R5): vol.In(MODEL_LABELS),
-                }
-            ),
-        )
-
-    async def async_step_name(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        if user_input is not None:
-            self._name = user_input["name"].strip()
-            if not self._name:
+            self._remote_name = user_input["remote_name"].strip()
+            if not self._remote_name:
                 return self.async_show_form(
-                    step_id="name",
+                    step_id="setup",
                     errors={"base": "invalid_name"},
-                    data_schema=self._name_schema(),
+                    data_schema=self._setup_schema(),
                 )
             if self._via_manual:
-                return await self.async_step_manual()
-            return await self.async_step_pair_wait()
+                return self.async_show_form(
+                    step_id="manual",
+                    data_schema=self._manual_schema(),
+                )
+            return self.async_show_form(
+                step_id="pair",
+                description_placeholders=self._pair_placeholders(),
+                data_schema=vol.Schema({}),
+            )
 
         return self.async_show_form(
-            step_id="name",
-            data_schema=self._name_schema(),
+            step_id="setup",
+            data_schema=self._setup_schema(),
         )
 
-    def _name_schema(self) -> vol.Schema:
-        return vol.Schema({vol.Required("name"): str})
+    def _manual_schema(self) -> vol.Schema:
+        return vol.Schema({vol.Required(CONF_DEVICE_ID): str})
+
+    def _pair_placeholders(self) -> dict[str, str]:
+        relay_name = (
+            get_esphome_device_name(self.hass, self._relay_device_id)
+            or self._relay_node
+        )
+        return {
+            "model": MODEL_LABELS.get(self._model, self._model),
+            "timeout": str(PAIR_TIMEOUT_SECONDS),
+            "relay": relay_name,
+        }
 
     async def async_step_manual(
         self, user_input: dict[str, Any] | None = None
@@ -210,21 +208,10 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=self._manual_schema(),
         )
 
-    def _manual_schema(self) -> vol.Schema:
-        return vol.Schema({vol.Required(CONF_DEVICE_ID): str})
-
-    async def async_step_pair_wait(
+    async def async_step_pair(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        relay_name = (
-            get_esphome_device_name(self.hass, self._relay_device_id)
-            or self._relay_node
-        )
-        placeholders = {
-            "model": MODEL_LABELS[self._model],
-            "timeout": str(PAIR_TIMEOUT_SECONDS),
-            "relay": relay_name,
-        }
+        placeholders = self._pair_placeholders()
 
         if user_input is None:
             return self.async_show_form(
@@ -254,7 +241,7 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured()
         return self.async_create_entry(
-            title=self._name,
+            title=self._remote_name,
             data={
                 CONF_DEVICE_ID: device_id,
                 CONF_MODEL: self._model,
