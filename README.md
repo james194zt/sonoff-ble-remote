@@ -151,33 +151,18 @@ Compare timestamps in **ESPHome log** vs **Developer tools → Events** for `esp
 
 ### Node-RED
 
-**Do not** use the `event.*` entities in Node-RED state nodes — their state is a
-**timestamp**, not a click type.
+One **`event.*` entity per button** — same model as the official eWeLink addon.
+Dedup (ESPHome + integration) ensures **one update per physical press**.
 
-#### Triggers (recommended)
-
-Use **`binary_sensor.*_press`** — goes **ON for 200 ms** on every press, then
-OFF. Node-RED state nodes that require ~25 ms ON will reliably catch this:
+Listen for `state_changed` on the event entity and read the press type from
+**`event_type`** in attributes (not from `state`, which is a timestamp):
 
 ```
-binary_sensor.kitchen_r5_top_left_press  →  on (200 ms) → off
+msg.data.new_state.attributes.event_type  →  "Single Click" | "Double Click" | "Long Click"
 ```
 
-Listen for `state_changed` with `msg.data.new_state.state === "on"`.
-
-The integration also **deduplicates** R5 rebroadcast bursts (2–3 ESPHome log
-lines per physical press) so toggle/press entities only react once.
-
-#### Toggle lights (on / off state)
-
-Use **`binary_sensor.*_toggle`** for latched on/off state. Each **single** click
-flips `on` ↔ `off`. With dedup enabled this is safe; without it, rebroadcasts
-can flip on→off→on in milliseconds and Node-RED sees nothing.
-
-#### Click type only
-
-**`sensor.*_click`** reports `single`, `double`, or `long` plus a `press_count`
-attribute. Use `_press` or `_toggle` for triggers, not `_click` state.
+Each press updates the timestamp in `state`, so Node-RED always sees a change
+even when the same button sends the same click type twice in a row.
 
 ## License
 

@@ -24,13 +24,6 @@ ACTION_TO_EVENT = {
     "long": "Long Click",
 }
 
-# Plain-text state for sensor entities (Node-RED friendly).
-ACTION_TO_SENSOR = {
-    "short": "single",
-    "double": "double",
-    "long": "long",
-}
-
 R5_BUTTONS: dict[int, str] = {
     1: "Top Left",
     2: "Top Centre",
