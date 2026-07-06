@@ -42,8 +42,9 @@
     "error": {
       "invalid_device_id": "Device ID must be 6-8 hex characters.",
       "already_configured": "This remote is already added on this BLE relay.",
-      "pair_timeout": "No button press detected. Check the ESPHome relay is online, flashed with the node field, and in range.",
+      "pair_timeout": "No button press reached Home Assistant. Enable ESPHome HA actions (see README), reflash relay firmware, then try again.",
       "pair_failed": "Pairing failed unexpectedly. Check Home Assistant logs.",
+      "ha_actions_disabled": "Enable 'Allow the device to perform Home Assistant actions' on your ESPHome BLE relay device, then try again.",
       "invalid_name": "Please enter a name for this remote.",
       "invalid_relay": "Selected device is not a valid ESPHome node."
     }

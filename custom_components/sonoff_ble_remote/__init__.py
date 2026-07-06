@@ -14,6 +14,7 @@ from .const import (
     CONF_RELAY_NODE,
     DOMAIN,
     EVENT_ESPHOME_SONOFF_BLE,
+    event_matches_relay,
     normalize_device_id,
     normalize_relay_node,
 )
@@ -28,9 +29,16 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate config entries to include BLE relay selection."""
     if entry.version == 1:
-        # Re-pairing is required to select a BLE relay node.
         return False
     return True
+
+
+def _configured_relay_nodes(hass: HomeAssistant) -> set[str]:
+    return {
+        normalize_relay_node(entry.data[CONF_RELAY_NODE])
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_RELAY_NODE)
+    }
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -78,25 +86,20 @@ def _make_event_handler(hass: HomeAssistant):
 
 @callback
 def _dispatch_sonoff_ble_event(hass: HomeAssistant, event) -> None:
-    event_node = normalize_relay_node(event.data.get("node", ""))
-    if not event_node:
-        _LOGGER.debug(
-            "Ignored esphome.sonoff_ble event without node field; "
-            "update your ESPHome BLE relay firmware"
-        )
-        return
+    data = event.data
+    allow_missing_node = len(_configured_relay_nodes(hass)) <= 1
 
-    raw_device = event.data.get("device", "")
-    device_id = normalize_device_id(raw_device)
+    raw_device = data.get("device", "")
+    device_id = normalize_device_id(str(raw_device))
     if not device_id:
         return
 
     try:
-        button = int(event.data.get("button", 0))
+        button = int(data.get("button", 0))
     except (TypeError, ValueError):
         return
 
-    action = event.data.get("action", "")
+    action = data.get("action", "")
     if not action:
         return
 
@@ -105,7 +108,9 @@ def _dispatch_sonoff_ble_event(hass: HomeAssistant, event) -> None:
 
     for entry in hass.config_entries.async_entries(DOMAIN):
         entry_relay = normalize_relay_node(entry.data.get(CONF_RELAY_NODE, ""))
-        if entry_relay != event_node:
+        if not event_matches_relay(
+            data, entry_relay, allow_missing_node=allow_missing_node
+        ):
             continue
         if normalize_device_id(entry.data[CONF_DEVICE_ID]) != device_id:
             continue
@@ -119,8 +124,8 @@ def _dispatch_sonoff_ble_event(hass: HomeAssistant, event) -> None:
 
     if not matched:
         _LOGGER.debug(
-            "Unmatched Sonoff BLE press: relay=%s device=%s button=%s action=%s",
-            event_node,
+            "Unmatched Sonoff BLE press: node=%s device=%s button=%s action=%s",
+            data.get("node"),
             device_id,
             button,
             action,

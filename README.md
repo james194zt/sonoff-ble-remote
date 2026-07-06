@@ -18,6 +18,11 @@ Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote advert
 1. **ESPHome** integration installed in Home Assistant
 2. An ESP32 node flashed with the BLE relay firmware (see below)
 3. The ESPHome node must include `api: homeassistant_services: true`
+4. **Enable Home Assistant actions** on the ESPHome device (required for pairing):
+
+   **Settings → Devices & services → ESPHome → BLE RELAY → Configure** → enable **Allow the device to perform Home Assistant actions**
+
+   Without this, button presses appear in ESPHome logs but never reach Home Assistant.
 
 ### ESPHome BLE relay
 

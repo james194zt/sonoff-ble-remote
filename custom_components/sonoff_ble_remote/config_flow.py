@@ -25,10 +25,15 @@ from .const import (
     MODEL_LABELS,
     MODEL_R5,
     PAIR_TIMEOUT_SECONDS,
+    event_matches_relay,
     normalize_device_id,
     normalize_relay_node,
 )
-from .util import get_esphome_device_name, get_esphome_node_from_device_id
+from .util import (
+    esphome_allows_ha_actions,
+    get_esphome_device_name,
+    get_esphome_node_from_device_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,14 +71,32 @@ async def _wait_for_sonoff_ble(
 
     @callback
     def _handler(event) -> None:
-        if normalize_relay_node(event.data.get("node", "")) != relay_node:
+        data = event.data
+        if not event_matches_relay(data, relay_node, allow_missing_node=True):
+            _LOGGER.debug(
+                "Pairing ignored event (relay mismatch): node=%s expected=%s data=%s",
+                data.get("node"),
+                relay_node,
+                data,
+            )
             return
-        device_id = normalize_device_id(event.data.get("device", ""))
+        device_id = normalize_device_id(str(data.get("device", "")))
         if not device_id or device_id in exclude:
+            _LOGGER.debug(
+                "Pairing ignored event (device): device=%s exclude=%s",
+                device_id,
+                exclude,
+            )
             return
+        _LOGGER.info("Pairing captured Sonoff BLE device id %s", device_id)
         if not future.done():
             future.set_result(device_id)
 
+    _LOGGER.info(
+        "Pairing listening for esphome.sonoff_ble on relay %s (up to %ss)",
+        relay_node,
+        timeout,
+    )
     unsub = hass.bus.async_listen(EVENT_ESPHOME_SONOFF_BLE, _handler)
     try:
         return await asyncio.wait_for(future, timeout=timeout)
@@ -209,6 +232,14 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self.async_show_form(
                 step_id="pair",
+                description_placeholders=placeholders,
+                data_schema=self._pair_schema(),
+            )
+
+        if not esphome_allows_ha_actions(self.hass, self._relay_device_id):
+            return self.async_show_form(
+                step_id="pair",
+                errors={"base": "ha_actions_disabled"},
                 description_placeholders=placeholders,
                 data_schema=self._pair_schema(),
             )

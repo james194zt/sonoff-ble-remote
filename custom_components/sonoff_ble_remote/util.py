@@ -105,6 +105,25 @@ def get_esphome_node_from_device_id(
     return None
 
 
+ESPHOME_ALLOW_SERVICE_CALLS = "allow_service_calls"
+
+
+def esphome_allows_ha_actions(hass: HomeAssistant, device_id: str) -> bool:
+    """Return whether the ESPHome device may fire events on the HA bus."""
+    registry = dr.async_get(hass)
+    device = _resolve_root_esphome_device(registry, device_id)
+    if device is None:
+        return True
+
+    for entry_id in device.config_entries:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry is None or entry.domain != ESPHOME_DOMAIN:
+            continue
+        if entry.options.get(ESPHOME_ALLOW_SERVICE_CALLS) is False:
+            return False
+    return True
+
+
 def get_esphome_device_name(hass: HomeAssistant, device_id: str) -> str | None:
     """Return the friendly name of an ESPHome device."""
     registry = dr.async_get(hass)

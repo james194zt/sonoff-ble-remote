@@ -55,3 +55,17 @@ def normalize_device_id(device_id: str) -> str:
 def normalize_relay_node(relay_node: str) -> str:
     """Normalize ESPHome node slug used in esphome.sonoff_ble events."""
     return relay_node.strip().lower()
+
+
+def event_matches_relay(
+    event_data: dict,
+    relay_node: str,
+    *,
+    allow_missing_node: bool = False,
+) -> bool:
+    """Return True if an esphome.sonoff_ble event belongs to the given relay."""
+    expected = normalize_relay_node(relay_node)
+    event_node = normalize_relay_node(str(event_data.get("node") or ""))
+    if event_node and event_node == expected:
+        return True
+    return allow_missing_node and not event_node
