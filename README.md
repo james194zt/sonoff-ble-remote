@@ -86,7 +86,7 @@ R5 press → BLE advert → ESP32 scan → esphome.sonoff_ble → HA entity (ins
 |--------|---------------|----------------|
 | **R5 “short” detection** | ~300–500 ms | **No** — remote waits to see if you double/long press |
 | ESP32 BLE scan | ~50–150 ms | Reflash with 80 ms scan window (see below) |
-| Duplicate-advert filter | 50 ms per button | Reflash (see below) |
+| Duplicate-advert filter | 400 ms per button | Reflash ble-relay |
 | Home Assistant | ~instant | Already event-driven |
 
 The **R5 does not send a “button down” event**. It only BLE-adverts after it has decided the press type (`short`, `double`, or `long`). That is why a light switch feels slightly sluggish compared to a wired switch — it is the remote, not HA polling.
@@ -99,7 +99,7 @@ Latest `sonoff_ble_receiver.yaml` uses:
 
 - **80 ms** scan interval/window (near-continuous active scan)
 - **Always-on** scanning from boot (no stop when API drops)
-- **50 ms** per-button debounce (different buttons never block each other)
+- **400 ms** per-button dedup (R5 rebroadcasts 2–3 BLE adverts per physical press)
 
 ### Automation tips for lights
 
@@ -143,7 +143,7 @@ action:
         - light.lamp_right
 ```
 
-3. **Reflash ble-relay** — latest decoder uses 50 ms per-button dedup (not a global cooldown) and 80 ms continuous BLE scan.
+3. **Reflash ble-relay** — latest decoder uses 400 ms per-button dedup and 80 ms continuous BLE scan.
 
 ### Measuring latency
 
@@ -152,30 +152,32 @@ Compare timestamps in **ESPHome log** vs **Developer tools → Events** for `esp
 ### Node-RED
 
 **Do not** use the `event.*` entities in Node-RED state nodes — their state is a
-**timestamp** (when the button was last pressed), which shows as useless garbage
-like `37.49.064+00.00`.
+**timestamp**, not a click type.
 
-#### Toggle lights (on / off / on / off)
+#### Triggers (recommended)
 
-Use the **`binary_sensor.*_toggle`** entities. Each **single** click flips
-`on` ↔ `off`, so Node-RED always gets a state change:
+Use **`binary_sensor.*_press`** — goes **ON for 200 ms** on every press, then
+OFF. Node-RED state nodes that require ~25 ms ON will reliably catch this:
 
 ```
-binary_sensor.kitchen_r5_top_left_toggle  →  on   (1st click)
-binary_sensor.kitchen_r5_top_left_toggle  →  off  (2nd click)
+binary_sensor.kitchen_r5_top_left_press  →  on (200 ms) → off
 ```
 
-Wire your flow to `state_changed` on that entity, or drive a light from its
-state directly. Double/long clicks do **not** flip the toggle.
+Listen for `state_changed` with `msg.data.new_state.state === "on"`.
+
+The integration also **deduplicates** R5 rebroadcast bursts (2–3 ESPHome log
+lines per physical press) so toggle/press entities only react once.
+
+#### Toggle lights (on / off state)
+
+Use **`binary_sensor.*_toggle`** for latched on/off state. Each **single** click
+flips `on` ↔ `off`. With dedup enabled this is safe; without it, rebroadcasts
+can flip on→off→on in milliseconds and Node-RED sees nothing.
 
 #### Click type only
 
-The **`sensor.*_click`** entities report the last press type (`single`,
-`double`, `long`). Repeated singles keep the same state, so Node-RED will **not**
-re-fire on the second click — use `_toggle` for switches instead.
-
-Each press also bumps a **`press_count`** attribute on the click sensor if you
-need a monotonic counter for custom logic.
+**`sensor.*_click`** reports `single`, `double`, or `long` plus a `press_count`
+attribute. Use `_press` or `_toggle` for triggers, not `_click` state.
 
 ## License
 

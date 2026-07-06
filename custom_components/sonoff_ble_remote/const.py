@@ -15,6 +15,9 @@ EVENT_ESPHOME_SONOFF_BLE = "esphome.sonoff_ble"
 
 PAIR_TIMEOUT_SECONDS = 120
 
+# Collapse R5 BLE rebroadcast bursts (same button fires 2-3 times per press).
+DEBOUNCE_SECONDS = 0.4
+
 ACTION_TO_EVENT = {
     "short": "Single Click",
     "double": "Double Click",

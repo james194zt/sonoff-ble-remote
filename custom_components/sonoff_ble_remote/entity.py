@@ -1,6 +1,9 @@
-"""Sonoff BLE Remote button entities (event + sensor + toggle per button)."""
+"""Sonoff BLE Remote button entities (event + sensor + toggle + pulse per button)."""
 
 from __future__ import annotations
+
+import logging
+from typing import Callable
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.event import EventDeviceClass, EventEntity
@@ -9,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 
 from .const import (
     ACTION_TO_EVENT,
@@ -23,9 +27,13 @@ from .const import (
     normalize_relay_node,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
+PULSE_SECONDS = 0.2  # Node-RED needs ~25 ms; hold ON long enough to catch it
+
 
 class SonoffBleRemoteButton:
-    """Event, click sensor, and toggle binary_sensor for one remote button."""
+    """Event, click sensor, toggle, and pulse binary_sensor for one remote button."""
 
     def __init__(
         self,
@@ -47,13 +55,17 @@ class SonoffBleRemoteButton:
         self.toggle = SonoffBleRemoteButtonToggle(
             device_id, relay_node, model, device_name, button_num, button_label
         )
+        self.pulse = SonoffBleRemoteButtonPulse(
+            device_id, relay_node, model, device_name, button_num, button_label
+        )
 
     @callback
     def trigger_action(self, action: str) -> None:
-        """Fire event entity and update sensor / toggle state."""
+        """Fire event entity and update sensor / toggle / pulse state."""
         self.event.trigger_action(action)
         self.sensor.trigger_action(action)
         self.toggle.trigger_action(action)
+        self.pulse.trigger_action(action)
 
 
 class SonoffBleRemoteButtonEvent(EventEntity):
@@ -125,7 +137,7 @@ class SonoffBleRemoteButtonSensor(SensorEntity):
 
 
 class SonoffBleRemoteButtonToggle(BinarySensorEntity):
-    """Toggles on/off on each single click — use in Node-RED for lights etc."""
+    """Toggles on/off on each single click — for on/off light state."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:toggle-switch"
@@ -152,6 +164,57 @@ class SonoffBleRemoteButtonToggle(BinarySensorEntity):
             return
         self._attr_is_on = not self._attr_is_on
         self.async_write_ha_state()
+
+
+class SonoffBleRemoteButtonPulse(BinarySensorEntity):
+    """Momentary ON pulse (200 ms) on each press — for Node-RED state triggers."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:gesture-tap"
+
+    def __init__(
+        self,
+        device_id: str,
+        relay_node: str,
+        model: str,
+        device_name: str,
+        button_num: int,
+        button_label: str,
+    ) -> None:
+        remote_key = f"{relay_node}_{device_id}"
+        self.button_num = button_num
+        self._attr_unique_id = f"{remote_key}_{button_num}_press"
+        self._attr_name = f"{button_label} Press"
+        self._attr_device_info = _device_info(remote_key, device_name, model)
+        self._attr_is_on = False
+        self._unsub_pulse: Callable[[], None] | None = None
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel pending pulse when entity is removed."""
+        self._async_cancel_pulse()
+
+    @callback
+    def _async_cancel_pulse(self) -> None:
+        if self._unsub_pulse is not None:
+            self._unsub_pulse()
+            self._unsub_pulse = None
+
+    @callback
+    def _async_pulse_off(self, _now) -> None:
+        self._unsub_pulse = None
+        self._attr_is_on = False
+        self.async_write_ha_state()
+
+    @callback
+    def trigger_action(self, action: str) -> None:
+        if action not in ACTION_TO_SENSOR:
+            return
+        self._async_cancel_pulse()
+        self._attr_is_on = True
+        self.async_write_ha_state()
+        self._unsub_pulse = async_call_later(
+            self.hass, PULSE_SECONDS, self._async_pulse_off
+        )
 
 
 def _device_info(remote_key: str, device_name: str, model: str) -> DeviceInfo:
@@ -185,6 +248,7 @@ async def async_setup_entry(
         entities.append(pair.event)
         entities.append(pair.sensor)
         entities.append(pair.toggle)
+        entities.append(pair.pulse)
     async_add_entities(entities)
 
     registry: dict[tuple[str, int], SonoffBleRemoteButton] = hass.data[DOMAIN][

@@ -55,7 +55,7 @@ esp32_ble_tracker:
                   int button_action = i % 3;
                   size_t slot = (size_t) (button_number - 1) * 3 + button_action;
                   uint32_t now = millis();
-                  if ((now - last_fire_ms[slot]) < 50) {
+                  if ((now - last_fire_ms[slot]) < 400) {
                     return;
                   }
                   last_fire_ms[slot] = now;
