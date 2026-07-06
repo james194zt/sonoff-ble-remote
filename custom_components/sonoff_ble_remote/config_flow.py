@@ -11,6 +11,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_DEVICE_ID,
@@ -25,6 +26,9 @@ from .const import (
 )
 
 DEVICE_ID_RE = re.compile(r"^[0-9a-fA-F]{6,8}$")
+
+METHOD_PAIR = "pair"
+METHOD_MANUAL = "manual"
 
 
 def _known_device_ids(hass: HomeAssistant) -> set[str]:
@@ -70,41 +74,35 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        return self.async_show_menu(
-            step_id="user",
-            menu_options=["pair", "manual"],
-        )
+        errors: dict[str, str] = {}
 
-    async def async_step_pair(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        self._via_manual = False
-        return await self.async_step_model()
-
-    async def async_step_manual(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        self._via_manual = True
-        if user_input is not None and CONF_DEVICE_ID in user_input:
-            device_id = normalize_device_id(user_input[CONF_DEVICE_ID])
-            if not DEVICE_ID_RE.match(device_id):
-                return self.async_show_form(
-                    step_id="manual",
-                    errors={"base": "invalid_device_id"},
-                )
-            if device_id in _known_device_ids(self.hass):
-                return self.async_show_form(
-                    step_id="manual",
-                    errors={"base": "already_configured"},
-                )
-            return await self._create_entry(device_id)
-
-        if user_input is None:
+        if user_input is not None:
+            method = user_input["method"]
+            self._via_manual = method == METHOD_MANUAL
             return await self.async_step_model()
 
         return self.async_show_form(
-            step_id="manual",
-            data_schema=vol.Schema({vol.Required(CONF_DEVICE_ID): str}),
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("method", default=METHOD_PAIR): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=METHOD_PAIR,
+                                    label="Pair - press a button on the remote",
+                                ),
+                                selector.SelectOptionDict(
+                                    value=METHOD_MANUAL,
+                                    label="Enter device ID manually",
+                                ),
+                            ],
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+            errors=errors,
         )
 
     async def async_step_model(
@@ -118,12 +116,21 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="model",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_MODEL, default=MODEL_R5): vol.In(
-                        {
-                            MODEL_R5: MODEL_LABELS[MODEL_R5],
-                            MODEL_S_MATE: MODEL_LABELS[MODEL_S_MATE],
-                        }
-                    )
+                    vol.Required(CONF_MODEL, default=MODEL_R5): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=MODEL_R5,
+                                    label=MODEL_LABELS[MODEL_R5],
+                                ),
+                                selector.SelectOptionDict(
+                                    value=MODEL_S_MATE,
+                                    label=MODEL_LABELS[MODEL_S_MATE],
+                                ),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                 }
             ),
         )
@@ -133,30 +140,82 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         if user_input is not None:
             self._name = user_input["name"].strip()
-            if self._via_manual:
+            if not self._name:
                 return self.async_show_form(
-                    step_id="manual",
-                    data_schema=vol.Schema({vol.Required(CONF_DEVICE_ID): str}),
+                    step_id="name",
+                    errors={"base": "invalid_name"},
                 )
+            if self._via_manual:
+                return await self.async_step_manual()
             return await self.async_step_pair_wait()
 
         return self.async_show_form(
             step_id="name",
-            data_schema=vol.Schema({vol.Required("name"): str}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("name"): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                            placeholder="Kitchen R5",
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is not None:
+            device_id = normalize_device_id(user_input[CONF_DEVICE_ID])
+            if not DEVICE_ID_RE.match(device_id):
+                return self.async_show_form(
+                    step_id="manual",
+                    errors={"base": "invalid_device_id"},
+                )
+            if device_id in _known_device_ids(self.hass):
+                return self.async_show_form(
+                    step_id="manual",
+                    errors={"base": "already_configured"},
+                )
+            return await self._create_entry(device_id)
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DEVICE_ID): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                            placeholder="5acc35c8",
+                        )
+                    ),
+                }
+            ),
         )
 
     async def async_step_pair_wait(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        placeholders = {
-            "model": MODEL_LABELS[self._model],
-            "timeout": str(PAIR_TIMEOUT_SECONDS),
-        }
+        instructions = (
+            f"Click Submit, then press any button on the "
+            f"{MODEL_LABELS[self._model]} within {PAIR_TIMEOUT_SECONDS} seconds."
+        )
 
         if user_input is None:
             return self.async_show_form(
                 step_id="pair",
-                description_placeholders=placeholders,
+                data_schema=vol.Schema(
+                    {
+                        vol.Required("instructions", default=instructions): selector.TextSelector(
+                            selector.TextSelectorConfig(
+                                type=selector.TextSelectorType.TEXT,
+                                multiline=True,
+                                read_only=True,
+                            )
+                        ),
+                    }
+                ),
             )
 
         known = _known_device_ids(self.hass)
@@ -168,7 +227,17 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="pair",
                 errors={"base": "pair_timeout"},
-                description_placeholders=placeholders,
+                data_schema=vol.Schema(
+                    {
+                        vol.Required("instructions", default=instructions): selector.TextSelector(
+                            selector.TextSelectorConfig(
+                                type=selector.TextSelectorType.TEXT,
+                                multiline=True,
+                                read_only=True,
+                            )
+                        ),
+                    }
+                ),
             )
 
         return await self._create_entry(device_id)
