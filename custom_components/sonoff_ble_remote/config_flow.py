@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
+from collections.abc import Callable
 from typing import Any
 
 import voluptuous as vol
@@ -58,52 +58,6 @@ def _known_device_ids(hass: HomeAssistant, relay_node: str) -> set[str]:
     }
 
 
-async def _wait_for_sonoff_ble(
-    hass: HomeAssistant,
-    relay_node: str,
-    exclude: set[str],
-    timeout: int,
-) -> str:
-    """Wait for the next esphome.sonoff_ble event from an unknown device."""
-    relay_node = normalize_relay_node(relay_node)
-    loop = asyncio.get_running_loop()
-    future: asyncio.Future[str] = loop.create_future()
-
-    @callback
-    def _handler(event) -> None:
-        data = event.data
-        if not event_matches_relay(data, relay_node, allow_missing_node=True):
-            _LOGGER.debug(
-                "Pairing ignored event (relay mismatch): node=%s expected=%s data=%s",
-                data.get("node"),
-                relay_node,
-                data,
-            )
-            return
-        device_id = normalize_device_id(str(data.get("device", "")))
-        if not device_id or device_id in exclude:
-            _LOGGER.debug(
-                "Pairing ignored event (device): device=%s exclude=%s",
-                device_id,
-                exclude,
-            )
-            return
-        _LOGGER.info("Pairing captured Sonoff BLE device id %s", device_id)
-        if not future.done():
-            future.set_result(device_id)
-
-    _LOGGER.info(
-        "Pairing listening for esphome.sonoff_ble on relay %s (up to %ss)",
-        relay_node,
-        timeout,
-    )
-    unsub = hass.bus.async_listen(EVENT_ESPHOME_SONOFF_BLE, _handler)
-    try:
-        return await asyncio.wait_for(future, timeout=timeout)
-    finally:
-        unsub()
-
-
 class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Sonoff BLE Remote."""
 
@@ -115,6 +69,8 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._via_manual = False
         self._relay_device_id: str = ""
         self._relay_node: str = ""
+        self._paired_device_id: str | None = None
+        self._pair_unsub: Callable[[], None] | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -162,7 +118,46 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     def _pair_schema(self) -> vol.Schema:
-        return vol.Schema({vol.Required("start", default=True): bool})
+        return vol.Schema({vol.Required("confirm", default=True): bool})
+
+    def _stop_pair_listener(self) -> None:
+        if self._pair_unsub is not None:
+            self._pair_unsub()
+            self._pair_unsub = None
+
+    def _start_pair_listener(self) -> None:
+        if self._pair_unsub is not None:
+            return
+
+        known = _known_device_ids(self.hass, self._relay_node)
+        relay_node = self._relay_node
+
+        @callback
+        def _handler(event) -> None:
+            data = event.data
+            _LOGGER.info("Pairing received %s: %s", EVENT_ESPHOME_SONOFF_BLE, data)
+
+            device_id = normalize_device_id(str(data.get("device", "")))
+            if not device_id or device_id in known:
+                return
+
+            if not event_matches_relay(data, relay_node, allow_missing_node=True):
+                _LOGGER.warning(
+                    "Pairing: node mismatch got=%r expected=%r, accepting anyway",
+                    data.get("node"),
+                    relay_node,
+                )
+
+            self._paired_device_id = device_id
+            _LOGGER.info("Pairing captured device id %s", device_id)
+
+        self._pair_unsub = self.hass.bus.async_listen(
+            EVENT_ESPHOME_SONOFF_BLE, _handler
+        )
+        _LOGGER.info(
+            "Pairing listener started for relay %s (press a button, then Submit)",
+            relay_node,
+        )
 
     async def async_step_setup(
         self, user_input: dict[str, Any] | None = None
@@ -194,10 +189,16 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             get_esphome_device_name(self.hass, self._relay_device_id)
             or self._relay_node
         )
+        captured = (
+            f"Detected remote: {self._paired_device_id}"
+            if self._paired_device_id
+            else "No button press detected yet"
+        )
         return {
             "model": MODEL_LABELS.get(self._model, self._model),
             "timeout": str(PAIR_TIMEOUT_SECONDS),
             "relay": relay_name,
+            "captured": captured,
         }
 
     async def async_step_manual(
@@ -229,14 +230,8 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         placeholders = self._pair_placeholders()
 
-        if user_input is None:
-            return self.async_show_form(
-                step_id="pair",
-                description_placeholders=placeholders,
-                data_schema=self._pair_schema(),
-            )
-
         if not esphome_allows_ha_actions(self.hass, self._relay_device_id):
+            self._stop_pair_listener()
             return self.async_show_form(
                 step_id="pair",
                 errors={"base": "ha_actions_disabled"},
@@ -244,52 +239,29 @@ class SonoffBleRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=self._pair_schema(),
             )
 
-        known = _known_device_ids(self.hass, self._relay_node)
-        return self.async_show_progress(
-            step_id="pairing",
-            progress_action="pairing",
-            progress_task=self.hass.async_create_task(
-                _wait_for_sonoff_ble(
-                    self.hass, self._relay_node, known, PAIR_TIMEOUT_SECONDS
-                )
-            ),
+        if user_input is None:
+            self._paired_device_id = None
+            self._start_pair_listener()
+            return self.async_show_form(
+                step_id="pair",
+                description_placeholders=placeholders,
+                data_schema=self._pair_schema(),
+            )
+
+        self._stop_pair_listener()
+
+        if self._paired_device_id:
+            return await self._create_entry(self._paired_device_id)
+
+        return self.async_show_form(
+            step_id="pair",
+            errors={"base": "pair_timeout"},
             description_placeholders=placeholders,
+            data_schema=self._pair_schema(),
         )
 
-    async def async_step_pairing(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        placeholders = self._pair_placeholders()
-
-        if not self.progress_task.done():
-            return self.async_show_progress(
-                step_id="pairing",
-                progress_action="pairing",
-                progress_task=self.progress_task,
-                description_placeholders=placeholders,
-            )
-
-        try:
-            device_id = self.progress_task.result()
-        except TimeoutError:
-            return self.async_show_form(
-                step_id="pair",
-                errors={"base": "pair_timeout"},
-                description_placeholders=placeholders,
-                data_schema=self._pair_schema(),
-            )
-        except Exception:
-            _LOGGER.exception("Unexpected error while pairing Sonoff BLE remote")
-            return self.async_show_form(
-                step_id="pair",
-                errors={"base": "pair_failed"},
-                description_placeholders=placeholders,
-                data_schema=self._pair_schema(),
-            )
-
-        return await self._create_entry(device_id)
-
     async def _create_entry(self, device_id: str) -> FlowResult:
+        self._stop_pair_listener()
         device_id = normalize_device_id(device_id)
         unique_id = f"{self._relay_node}_{device_id}"
         await self.async_set_unique_id(unique_id)

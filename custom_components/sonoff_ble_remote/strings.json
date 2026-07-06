@@ -20,9 +20,9 @@
       },
       "pair": {
         "title": "Pairing",
-        "description": "Relay: {relay}. Listening time: {timeout} seconds.",
+        "description": "Relay: {relay}. {captured}\n\nPress any button on the {model}, then click Submit.",
         "data": {
-          "start": "Click Submit to start listening, then press any button on the {model} remote."
+          "confirm": "Ready to finish pairing"
         }
       },
       "manual": {
@@ -33,20 +33,11 @@
         }
       }
     },
-    "progress": {
-      "pairing": {
-        "title": "Listening for button press",
-        "description": "Press any button on the {model} now. Relay: {relay}."
-      }
-    },
     "error": {
       "invalid_device_id": "Device ID must be 6-8 hex characters.",
       "already_configured": "This remote is already added on this BLE relay.",
-      "pair_timeout": "No button press reached Home Assistant. Enable ESPHome HA actions (see README), reflash relay firmware, then try again.",
-      "pair_failed": "Pairing failed unexpectedly. Check Home Assistant logs.",
-      "ha_actions_disabled": "Enable 'Allow the device to perform Home Assistant actions' on your ESPHome BLE relay device, then try again.",
-      "invalid_name": "Please enter a name for this remote.",
-      "invalid_relay": "Selected device is not a valid ESPHome node."
+      "pair_timeout": "No button press reached Home Assistant. Press a button on the R5, wait a second, then click Submit. Check Developer Tools > Events for esphome.sonoff_ble.",
+      "ha_actions_disabled": "Enable 'Allow the device to perform Home Assistant actions' on your ESPHome BLE relay device, then try again."
     }
   }
 }
