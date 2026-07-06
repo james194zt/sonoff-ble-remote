@@ -41,8 +41,7 @@ esp32_ble_tracker:
     - mac_address: "66:55:44:33:22:11"
       then:
         - lambda: |-
-            static uint32_t last_key = 0;
-            static uint32_t last_key_ms = 0;
+            static uint32_t last_fire_ms[18] = {0};
             auto btdata = x.get_service_uuids();
             if (btdata.size() >= 6 && btdata[1].contains(0x78, 0xF6)) {
               uint32_t btdevice = (btdata[2].get_uuid().uuid.uuid32 & 0xff000000) |
@@ -54,13 +53,12 @@ esp32_ble_tracker:
                     (((uuid4u32 >> 8 & 0xff) ^ (stored_value >> 8 & 0xff)) == ((uuid4u32 & 0xff) ^ (stored_value & 0xff)))) {
                   int button_number = i / 3 + 1;
                   int button_action = i % 3;
-                  uint32_t key = (btdevice & 0xffffff) | (button_number << 24) | (button_action << 28);
+                  size_t slot = (size_t) (button_number - 1) * 3 + button_action;
                   uint32_t now = millis();
-                  if (key == last_key && (now - last_key_ms) < 150) {
+                  if ((now - last_fire_ms[slot]) < 50) {
                     return;
                   }
-                  last_key = key;
-                  last_key_ms = now;
+                  last_fire_ms[slot] = now;
                   esphome::api::CustomAPIDevice capi;
                   capi.fire_homeassistant_event("esphome.sonoff_ble",
                     {{"node", App.get_name().c_str()},

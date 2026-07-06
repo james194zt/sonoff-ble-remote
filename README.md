@@ -86,7 +86,7 @@ R5 press → BLE advert → ESP32 scan → esphome.sonoff_ble → HA entity (ins
 |--------|---------------|----------------|
 | **R5 “short” detection** | ~300–500 ms | **No** — remote waits to see if you double/long press |
 | ESP32 BLE scan | ~50–150 ms | Reflash with 80 ms scan window (see below) |
-| Duplicate-advert filter | 150 ms | Only blocks the same button+action burst |
+| Duplicate-advert filter | 50 ms per button | Reflash (see below) |
 | Home Assistant | ~instant | Already event-driven |
 
 The **R5 does not send a “button down” event**. It only BLE-adverts after it has decided the press type (`short`, `double`, or `long`). That is why a light switch feels slightly sluggish compared to a wired switch — it is the remote, not HA polling.
@@ -99,7 +99,7 @@ Latest `sonoff_ble_receiver.yaml` uses:
 
 - **80 ms** scan interval/window (near-continuous active scan)
 - **Always-on** scanning from boot (no stop when API drops)
-- **150 ms** per-button debounce (not a global block on repeat presses)
+- **50 ms** per-button debounce (different buttons never block each other)
 
 ### Automation tips for lights
 
@@ -121,6 +121,29 @@ action:
 - Use `mode: restart` (not `queued`) so rapid presses are not stacked
 - Do **not** add an extra `delay` in the automation
 - Map only the buttons you need to **Single Click** for lights
+
+### Rapid presses / multiple lights in one room
+
+The **R5 will not send a second press while it is still deciding the first one**
+(~300–500 ms per button). Hammering four buttons in under half a second will
+often drop presses — that is remote firmware, not Home Assistant.
+
+**What you can do:**
+
+1. **Pace presses** — leave ~½ second between each button when turning off several lights.
+2. **One button → scene/script** — map one button (or a **Long Click**) to turn off every light in the room:
+
+```yaml
+action:
+  - service: light.turn_off
+    target:
+      entity_id:
+        - light.ceiling
+        - light.lamp_left
+        - light.lamp_right
+```
+
+3. **Reflash ble-relay** — latest decoder uses 50 ms per-button dedup (not a global cooldown) and 80 ms continuous BLE scan.
 
 ### Measuring latency
 
