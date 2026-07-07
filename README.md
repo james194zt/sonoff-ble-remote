@@ -4,7 +4,22 @@
 
 Home Assistant custom integration for **Sonoff R5** and **S-Mate** BLE remotes.
 
-Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote adverts and forward them to Home Assistant. Each remote button becomes one **sensor** entity — state is **Single Click**, **Double Click**, or **Long Click**.
+Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote adverts and forward them to Home Assistant.
+
+## Entity model
+
+Each physical button gets **three toggle binary sensors** — one per click type:
+
+```
+Right Lamp Switch
+  ├── Top Left Single    →  on / off / on / off  (each single press)
+  ├── Top Left Double
+  ├── Top Left Long
+  ├── Top Centre Single
+  ...
+```
+
+Every press **flips** the matching entity (`on` ↔ `off`), so Home Assistant and Node-RED always see a real state change — including repeated singles.
 
 ## Install (HACS)
 
@@ -22,156 +37,65 @@ Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote advert
 
    **Settings → Devices & services → ESPHome → BLE RELAY → Configure** → enable **Allow the device to perform Home Assistant actions**
 
-   Without this, button presses appear in ESPHome logs but never reach Home Assistant.
+## ESPHome BLE relay
 
-### ESPHome BLE relay
-
-Flash an ESP32 using the example in [`esphome/ble-relay.yaml`](esphome/ble-relay.yaml), or add the Sonoff BLE decoder from the [ESPHome docs](https://devices.esphome.io/devices/sonoff-ble/).
-
-**Important:** Events must include a `node` field (the ESPHome device name). The example firmware in this repo does this automatically via `App.get_name()`. Reflash if you use an older YAML without the `node` field.
+Flash an ESP32 using [`esphome/ble-relay.yaml`](esphome/ble-relay.yaml).
 
 ## Add a remote
 
 1. **Settings → Devices & services → Add integration → Sonoff BLE Remote**
-2. **Select your ESPHome BLE relay** from the device list
-3. Choose **Pair** or **Enter device ID manually**
-4. Select model (**R5** = 6 buttons, **S-Mate** = 3 buttons)
-5. Name the remote (e.g. `Kitchen R5`)
-6. If pairing: **Submit**, then press any button within 120 seconds
-
-The Sonoff remote links to the selected ESPHome relay. Multiple relays and multiple remotes are supported.
+2. Select your ESPHome BLE relay
+3. Pair or enter device ID manually
+4. Choose model and name
 
 ## Automations
+
+Toggle a light on each **single** press of Top Left:
 
 ```yaml
 trigger:
   - platform: state
-    entity_id: sensor.kitchen_r5_bottom_centre
-    to: Long Click
+    entity_id: binary_sensor.right_lamp_switch_top_left_single
 action:
   - service: light.toggle
     target:
-      entity_id: light.kitchen
+      entity_id: light.bedroom_lamp
 ```
 
-Each press fires `state_changed` even when the click type repeats (`force_update`).
+Use `to: "on"` or `to: "off"` if you need direction — odd presses are `on`, even presses are `off`.
 
-### Options
+Long press example:
+
+```yaml
+trigger:
+  - platform: state
+    entity_id: binary_sensor.right_lamp_switch_top_left_long
+    to: "on"
+action:
+  - service: light.turn_off
+    target:
+      area_id: bedroom
+```
+
+## Options
 
 **Settings → Devices & services → Sonoff BLE Remote → your remote → Configure**
 
 | Option | Default | Purpose |
 |--------|---------|---------|
-| **Event deduplication (ms)** | 400 | Ignore duplicate events for the same button within this window |
+| **Event deduplication (ms)** | 400 | Collapse R5 BLE rebroadcast bursts |
 
-Increase if one physical press still triggers twice in HA/Node-RED. Decrease if repeat presses on the same button feel sluggish.
+Also adjustable on the ESPHome device: **Sonoff BLE Event Dedup** number entity.
 
-**ESPHome (ble-relay device):** after flashing firmware with the latest YAML, adjust **Sonoff BLE Event Dedup** (`number.*`) on the ESPHome device in Home Assistant or the ESPHome dashboard — default 400 ms, range 50–2000 ms. Persists across reboots; no reflash needed.
+## Node-RED
 
-**Home Assistant integration:** per-remote option below (both layers are independent).
-
-## Event payload (from ESPHome)
-
-| Field    | Example      | Description                          |
-|----------|--------------|--------------------------------------|
-| `node`   | `ble-relay`  | ESPHome device name (BLE relay)      |
-| `device` | `5acc35c8`   | Sonoff remote ID                     |
-| `button` | `1`–`6` (R5) | Button number                        |
-| `action` | `short`      | `short`, `double`, or `long`         |
-
-## Multiple remotes / relays
-
-- Add the integration again for each Sonoff remote
-- Select the correct ESPHome relay if you have more than one
-- The same Sonoff remote ID can exist on different relays independently
-
-## Event latency
-
-Nothing is **polled** in Home Assistant — the chain is:
+Use **events: state** on the click entity you care about:
 
 ```
-R5 press → BLE advert → ESP32 scan → esphome.sonoff_ble → HA entity (instant)
+binary_sensor.right_lamp_switch_top_left_single
 ```
 
-### Where the delay comes from
-
-| Source | Typical delay | Can we fix it? |
-|--------|---------------|----------------|
-| **R5 “short” detection** | ~300–500 ms | **No** — remote waits to see if you double/long press |
-| ESP32 BLE scan | ~50–150 ms | Reflash with 80 ms scan window (see below) |
-| Duplicate-advert filter | 400 ms per button | Reflash ble-relay |
-| Home Assistant | ~instant | Already event-driven |
-
-The **R5 does not send a “button down” event**. It only BLE-adverts after it has decided the press type (`short`, `double`, or `long`). That is why a light switch feels slightly sluggish compared to a wired switch — it is the remote, not HA polling.
-
-The official eWeLink gateway uses a ~**400 ms** decision window for the same reason.
-
-### ESPHome tuning (reflash ble-relay)
-
-Latest `sonoff_ble_receiver.yaml` uses:
-
-- **80 ms** scan interval/window (near-continuous active scan)
-- **Always-on** scanning from boot (no stop when API drops)
-- **400 ms** per-button dedup (configurable via **Sonoff BLE Event Dedup** number entity)
-
-### Automation tips for lights
-
-Use **Single Click** and keep the automation fast:
-
-```yaml
-trigger:
-  - platform: state
-    entity_id: sensor.kitchen_r5_bottom_centre
-    to: Single Click
-mode: restart
-action:
-  - service: light.toggle
-    target:
-      entity_id: light.kitchen
-```
-
-- Use `mode: restart` (not `queued`) so rapid presses are not stacked
-- Do **not** add an extra `delay` in the automation
-- Map only the buttons you need to **Single Click** for lights
-
-### Rapid presses / multiple lights in one room
-
-The **R5 will not send a second press while it is still deciding the first one**
-(~300–500 ms per button). Hammering four buttons in under half a second will
-often drop presses — that is remote firmware, not Home Assistant.
-
-**What you can do:**
-
-1. **Pace presses** — leave ~½ second between each button when turning off several lights.
-2. **One button → scene/script** — map one button (or a **Long Click**) to turn off every light in the room:
-
-```yaml
-action:
-  - service: light.turn_off
-    target:
-      entity_id:
-        - light.ceiling
-        - light.lamp_left
-        - light.lamp_right
-```
-
-3. **Reflash ble-relay** — latest decoder uses 400 ms per-button dedup and 80 ms continuous BLE scan.
-
-### Measuring latency
-
-Compare timestamps in **ESPHome log** vs **Developer tools → Events** for `esphome.sonoff_ble`. If ESPHome logs the press quickly but HA is slow, the issue is HA-side. If ESPHome log itself is delayed after your physical press, the R5 + BLE scan path is the bottleneck.
-
-### Node-RED
-
-One **`sensor.*` entity per button**. State is the click type directly:
-
-```
-sensor.right_lamp_switch_left_lamp  →  Single Click
-```
-
-Use **events: state** nodes on these sensors — `msg.payload` is `Single Click`,
-`Double Click`, or `Long Click` (not a timestamp). `force_update` ensures every
-press triggers even when the same click type repeats.
+Each single press flips `on` ↔ `off` — Node-RED always triggers.
 
 ## License
 

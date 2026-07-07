@@ -25,6 +25,19 @@ ACTION_TO_EVENT = {
     "long": "Long Click",
 }
 
+# Entity id suffix and display label per click action.
+ACTION_KEYS = {
+    "short": "single",
+    "double": "double",
+    "long": "long",
+}
+
+ACTION_LABELS = {
+    "short": "Single",
+    "double": "Double",
+    "long": "Long",
+}
+
 R5_BUTTONS: dict[int, str] = {
     1: "Top Left",
     2: "Top Centre",

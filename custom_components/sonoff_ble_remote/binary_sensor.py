@@ -1,4 +1,4 @@
-"""Sensor platform for Sonoff BLE Remote."""
+"""Binary sensor platform for Sonoff BLE Remote."""
 
 from .entity import async_setup_entry
 
