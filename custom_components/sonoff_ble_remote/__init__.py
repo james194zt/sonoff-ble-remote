@@ -7,10 +7,11 @@ import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    ACTION_KEYS,
     CONF_DEVICE_ID,
     CONF_RELAY_NODE,
     CONF_DEBOUNCE_MS,
@@ -27,7 +28,31 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["binary_sensor"]
 
+LEGACY_BINARY_SUFFIXES = ("_toggle", "_press", "_click")
+CURRENT_BINARY_SUFFIXES = tuple(f"_{key}" for key in ACTION_KEYS.values())
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+@callback
+def _async_cleanup_stale_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove orphaned entities left from older integration versions."""
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.domain in ("event", "sensor"):
+            _LOGGER.info("Removing legacy %s entity %s", entity.domain, entity.entity_id)
+            registry.async_remove(entity.entity_id)
+            continue
+        if entity.domain != "binary_sensor":
+            continue
+        unique_id = entity.unique_id or ""
+        if unique_id.endswith(LEGACY_BINARY_SUFFIXES):
+            _LOGGER.info("Removing legacy binary_sensor %s", entity.entity_id)
+            registry.async_remove(entity.entity_id)
+            continue
+        if not unique_id.endswith(CURRENT_BINARY_SUFFIXES):
+            _LOGGER.info("Removing orphan binary_sensor %s", entity.entity_id)
+            registry.async_remove(entity.entity_id)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -56,6 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(
         DOMAIN, {"entities": {}, "listener": None, "debounce": {}}
     )
+
+    _async_cleanup_stale_entities(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
