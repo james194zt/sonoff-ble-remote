@@ -1,8 +1,8 @@
-"""Sonoff BLE Remote — one event entity per button."""
+"""Sonoff BLE Remote — one sensor entity per button (click type as state)."""
 
 from __future__ import annotations
 
-from homeassistant.components.event import EventDeviceClass, EventEntity
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -21,12 +21,12 @@ from .const import (
 )
 
 
-class SonoffBleRemoteButton(EventEntity):
-    """One button — fires Single Click, Double Click, or Long Click."""
+class SonoffBleRemoteButton(SensorEntity):
+    """One button — state is Single Click, Double Click, or Long Click."""
 
-    _attr_device_class = EventDeviceClass.BUTTON
-    _attr_event_types = list(ACTION_TO_EVENT.values())
     _attr_has_entity_name = True
+    _attr_icon = "mdi:gesture-tap-button"
+    _attr_force_update = True
 
     def __init__(
         self,
@@ -49,13 +49,15 @@ class SonoffBleRemoteButton(EventEntity):
             manufacturer="SONOFF",
             model=MODEL_LABELS.get(model, model.upper()),
         )
+        self._attr_native_value: str | None = None
 
     @callback
     def trigger_action(self, action: str) -> None:
         event_type = ACTION_TO_EVENT.get(action)
         if event_type is None:
             return
-        self._trigger_event(event_type)
+        self._attr_native_value = event_type
+        self.async_write_ha_state()
 
 
 async def async_setup_entry(

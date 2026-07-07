@@ -4,7 +4,7 @@
 
 Home Assistant custom integration for **Sonoff R5** and **S-Mate** BLE remotes.
 
-Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote adverts and forward them to Home Assistant. Each remote button becomes an **event** entity with **Single Click**, **Double Click**, and **Long Click**.
+Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote adverts and forward them to Home Assistant. Each remote button becomes one **sensor** entity — state is **Single Click**, **Double Click**, or **Long Click**.
 
 ## Install (HACS)
 
@@ -46,8 +46,7 @@ The Sonoff remote links to the selected ESPHome relay. Multiple relays and multi
 ```yaml
 trigger:
   - platform: state
-    entity_id: event.kitchen_r5_bottom_centre
-    attribute: event_type
+    entity_id: sensor.kitchen_r5_bottom_centre
     to: Long Click
 action:
   - service: light.toggle
@@ -55,7 +54,7 @@ action:
       entity_id: light.kitchen
 ```
 
-Or use **Device triggers** in the UI.
+Each press fires `state_changed` even when the click type repeats (`force_update`).
 
 ### Options
 
@@ -122,8 +121,7 @@ Use **Single Click** and keep the automation fast:
 ```yaml
 trigger:
   - platform: state
-    entity_id: event.kitchen_r5_bottom_centre
-    attribute: event_type
+    entity_id: sensor.kitchen_r5_bottom_centre
     to: Single Click
 mode: restart
 action:
@@ -165,18 +163,15 @@ Compare timestamps in **ESPHome log** vs **Developer tools → Events** for `esp
 
 ### Node-RED
 
-One **`event.*` entity per button** — same model as the official eWeLink addon.
-Dedup (ESPHome + integration) ensures **one update per physical press**.
-
-Listen for `state_changed` on the event entity and read the press type from
-**`event_type`** in attributes (not from `state`, which is a timestamp):
+One **`sensor.*` entity per button**. State is the click type directly:
 
 ```
-msg.data.new_state.attributes.event_type  →  "Single Click" | "Double Click" | "Long Click"
+sensor.right_lamp_switch_left_lamp  →  Single Click
 ```
 
-Each press updates the timestamp in `state`, so Node-RED always sees a change
-even when the same button sends the same click type twice in a row.
+Use **events: state** nodes on these sensors — `msg.payload` is `Single Click`,
+`Double Click`, or `Long Click` (not a timestamp). `force_update` ensures every
+press triggers even when the same click type repeats.
 
 ## License
 
