@@ -42,10 +42,13 @@ R5_BUTTONS: dict[int, str] = {
     1: "Top Left",
     2: "Top Centre",
     3: "Top Right",
-    4: "Bottom Left",
+    4: "Bottom Right",
     5: "Bottom Centre",
-    6: "Bottom Right",
+    6: "Bottom Left",
 }
+
+# ESPHome btdata_uuid4 uses bottom row left-to-right (4=BL, 6=BR).
+R5_BLE_BUTTON_REMAP: dict[int, int] = {4: 6, 6: 4}
 
 S_MATE_BUTTONS: dict[int, str] = {
     1: "Button 1",
@@ -62,6 +65,13 @@ MODEL_LABELS = {
     MODEL_R5: "Sonoff R5 (6 buttons)",
     MODEL_S_MATE: "Sonoff S-Mate (3 buttons)",
 }
+
+
+def map_r5_ble_button(button: int, model: str) -> int:
+    """Map ESPHome UUID-table button index to Sonoff R5 numbering."""
+    if model != MODEL_R5:
+        return button
+    return R5_BLE_BUTTON_REMAP.get(button, button)
 
 
 def normalize_device_id(device_id: str) -> str:

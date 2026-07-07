@@ -8,7 +8,18 @@ Use any ESP32 running **ESPHome** as a BLE relay to decode eWeLink-Remote advert
 
 ## Entity model
 
-Each physical button gets **three toggle binary sensors** — one per click type:
+Each physical button gets **three toggle binary sensors** — one per click type.
+
+R5 button layout (matches Sonoff numbering):
+
+| Button | Position |
+|--------|----------|
+| 1 | Top Left |
+| 2 | Top Centre |
+| 3 | Top Right |
+| 4 | Bottom Right |
+| 5 | Bottom Centre |
+| 6 | Bottom Left |
 
 ```
 Right Lamp Switch

@@ -13,6 +13,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import (
     ACTION_KEYS,
     CONF_DEVICE_ID,
+    CONF_MODEL,
     CONF_RELAY_NODE,
     CONF_DEBOUNCE_MS,
     DEFAULT_DEBOUNCE_MS,
@@ -20,6 +21,7 @@ from .const import (
     EVENT_ESPHOME_SONOFF_BLE,
     event_matches_relay,
     get_debounce_seconds,
+    map_r5_ble_button,
     normalize_device_id,
     normalize_relay_node,
 )
@@ -158,6 +160,8 @@ def _dispatch_sonoff_ble_event(hass: HomeAssistant, event) -> None:
             continue
         if normalize_device_id(entry.data[CONF_DEVICE_ID]) != device_id:
             continue
+
+        button = map_r5_ble_button(button, entry.data.get(CONF_MODEL, ""))
 
         entity = registry.get((entry.entry_id, button))
         if entity is None:
